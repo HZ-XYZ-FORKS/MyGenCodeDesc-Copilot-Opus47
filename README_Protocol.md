@@ -106,7 +106,81 @@ AI_Window_Live_Ratio = Sum(line.genRatio / 100 for live lines whose current orig
 
 ---
 
-## ======>>>SCOPE DEFINITIONS<<<======
+## ======>>>LINE OWNERSHIP RULES<<<======
+
+These rules define **which revision owns a line** and must be followed by all algorithms and forks.
+
+| Scenario | Rule |
+|---|---|
+| AI line later edited by human | Attribute to the **newer** commit (human now owns it) |
+| Human line later rewritten by AI | Attribute to the **newer** commit (AI now owns it) |
+| Line deleted | **Does not count** — removed from metric population |
+| File renamed or moved | Line ownership **preserved** through blame rename detection |
+| Line copied to another file | Conservative: treat as **newly introduced** in the copy commit. Lineage mode (copy detection) is optional. |
+| Force-push or amend after genCodeDesc written | Embedded blame is **silently stale** — no automatic correction |
+
+Core principle: **blame always answers "which revision last introduced the current form of this line?"** — per line, not per commit. It can trace back to this commit, the parent, a commit from a year ago, or a commit from a merged branch.
+
+---
+
+## ======>>>genMethod VOCABULARY<<<======
+
+The `genMethod` field describes how a line was generated. The following values are defined:
+
+| Value | Meaning |
+|---|---|
+| `codeCompletion` | Line generated via inline code completion (e.g., Copilot tab-complete) |
+| `vibeCoding` | Line generated via conversational / agent-driven coding (e.g., chat, agentic flow) |
+| `Manual` | Line written entirely by a human — only used in v26.04 where human lines are explicit |
+
+`genMethod` is a free string — forks may introduce new values (e.g., `codeReview`, `refactoring`) without breaking the protocol. Consumers should treat unknown values as valid.
+
+---
+
+## ======>>>CREDENTIAL SECTION<<<======
+
+The `CREDENTIAL` section is **envelope metadata**. Rules:
+
+- The analyzer **ignores** this section — it is not part of the attribution contract.
+- Forks **SHOULD NOT** store real credentials in genCodeDesc files committed to any repository.
+- If credentials are needed for metadata transport, they should be injected at runtime, not persisted in protocol files.
+- The example `accessToken` in the protocol template is a **placeholder only**.
+
+---
+
+## ======>>>VALIDATION RULES<<<======
+
+When a genCodeDesc record is fetched, the consumer **must validate** that it belongs to the requested target:
+
+| Field | Must Match |
+|---|---|
+| `REPOSITORY.vcsType` | Active repository type (`git` or `svn`) |
+| `REPOSITORY.repoURL` | Requested logical repository identity |
+| `REPOSITORY.repoBranch` | Requested branch or path |
+| `REPOSITORY.revisionId` | Requested revision |
+
+If any field mismatches, the record **must be rejected** to prevent silently joining wrong metadata to a real repository revision.
+
+---
+
+## ======>>>KNOWN PROTOCOL AMBIGUITIES<<<======
+
+### v26.04 `lineRange` with blame — originalLine mapping
+
+In the current v26.04 example, a `lineRange: {from: 2, to: 14}` add entry has `blame.originalLine: 2`. The intended semantics is that line 2 maps to original line 2, line 3 to original line 3, etc. (contiguous 1:1 mapping). This works because the `_detailSemantics.lineRange_constraint` requires all lines in the range to share the same blame origin with a contiguous original block. However, the protocol should ideally use `blame.originalLineRange: {from: 2, to: 14}` to be fully unambiguous. Forks should treat `blame.originalLine` in a lineRange entry as the **start** of a contiguous original range.
+
+---
+
+## ======>>>VERSION EVOLUTION POLICY<<<======
+
+- **Additive changes** (new optional fields, new `_semantics` documentation): increment minor version (e.g., `26.03` → `26.04`).
+- **Breaking changes** (removing fields, changing field semantics, renaming sections): require a **major version bump** (e.g., `26.xx` → `27.xx`).
+- Unknown top-level fields are treated as envelope metadata and **ignored** by consumers — this ensures forward compatibility.
+- No formal JSON Schema exists yet. Forks that need strict validation should define one.
+
+---
+
+## ======>>>SCOPE DEFINITIONS<<<<======
 
 The protocol supports multiple scope levels. Scope determines **what counts as a measured line**.
 
@@ -122,3 +196,4 @@ The protocol supports multiple scope levels. Scope determines **what counts as a
 ## ======>>>SOURCE<<<======
 
 Protocol definitions imported from [AggregateGenCodeDesc](https://github.com/EnigmaWU/MyLLM_Arena/tree/main/MyStartups/AggregateGenCodeDesc).
+Line ownership rules distilled from README §4 "Line ownership rules" and README_UbiLang.md.

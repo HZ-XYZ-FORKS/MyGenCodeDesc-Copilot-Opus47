@@ -140,3 +140,28 @@ Scores 1–5, higher is better:
 ## ======>>>SOURCE<<<======
 
 Distilled from [AggregateGenCodeDesc — README_IntroAlgABC.md](https://github.com/EnigmaWU/MyLLM_Arena/blob/main/MyStartups/AggregateGenCodeDesc/README_IntroAlgABC.md).
+
+---
+
+## ======>>>APPENDIX: WHAT IS BLAME<<<======
+
+All three algorithms rely on **blame** — the concept that for any line in a file, you can ask: **which revision last introduced this line's current text content?**
+
+Blame is **per-line**, not per-commit. In a file with 3 lines, each line may come from a different revision:
+
+```
+file at commit abc123:
+  line 1: "int x = 0;"   → blame: revision 111aaa (3 months ago)
+  line 2: "x += 1;"      → blame: revision 222bbb (1 week ago)
+  line 3: "return x;"    → blame: revision abc123 (this commit)
+```
+
+This is why blame naturally handles **rename** (traces through file path changes), **merge** (traces through merged branches), and **rewrite** (points to the newer revision).
+
+How each algorithm gets blame:
+
+| Algorithm | Blame source |
+|---|---|
+| A | Live `git blame` / `svn blame` at analysis time |
+| B | Reconstructed by replaying diffs (rebuilt partial blame) |
+| C | Embedded in v26.04 at write time by the codeAgent |
