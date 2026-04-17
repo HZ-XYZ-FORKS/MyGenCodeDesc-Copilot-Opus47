@@ -1,13 +1,10 @@
-# MyGenCodeDescBase
+# MyGenCodeDesc-Copilot-Opus47
 
-- BASE of genCodeDesc, used to PlayKata with CodeAgent&LLM such as Copilot+[GPT,Opus,Sonnet].
-  - which means: we have WHAT&WHY of genCodeDesc in this BASE, then we fork genCodeDesc for different CodeAgent&LLM to implement WHEN&WHERE&HOW to genCodeDesc.
+- Based on genCodeDesc, PlayKata with Copilot+Opus47.
+  - here we implement WHEN&WHERE&HOW to genCodeDesc.
   - use method: CaTDD(Comment-alive Test-Driven Development) from:
     - UserStory+UserGuide -> AcceptanceCriteria -> TestCase.
     - ArchDesign -> DetailDesign -> Implementation.
-
-- Example:
-  - `fork` MyGenCodeDescBase -> MyGenCodeDesc_Copilot_GPT-5.4-Xhigh_Python
 
 ---
 
