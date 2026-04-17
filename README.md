@@ -46,7 +46,7 @@
   | Mostly AI (>=60) | 8 / 10 = **80%** |
 
 - We want a tool named **`aggregateGenCodeDesc`** to compute this metric.
-  - Language: **Python** or **C++** or **Rust** — each fork chooses one.
+  - Language: **Python**.
   - Input: `repoURL + repoBranch + startTime + endTime + threshold` + genCodeDesc metadata.
   - Output: aggregate result in genCodeDesc protocol-shaped JSON, including all three mode values.
   - Must support Algorithm A/B/C and Scope A/B/C/D as defined in this BASE.
