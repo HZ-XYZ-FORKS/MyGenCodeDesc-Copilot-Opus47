@@ -20,7 +20,7 @@
   - **v26.03** — records AI-attributed lines only; blame discovered at analysis time from live VCS.
   - **v26.04** — incremental add/delete with embedded blame; self-sufficient without VCS access.
 - Three algorithms (A, B, C) that answer the same metric question using different line-origin discovery strategies.
-- Details: [README_Protocol.md](README_Protocol.md) | [README_AlgABC.md](README_AlgABC.md) | [Protocols/](Protocols/) | [README_UserStories.md](README_UserStories.md)
+- Details: [README_Protocol.md](README_Protocol.md) | [README_AlgABC.md](README_AlgABC.md) | [Protocols/](Protocols/) | [README_UserStories.md](README_UserStories.md) | [README_UserGuide.md](README_UserGuide.md)
 
 ## ======>>>WHAT WE WANT<<<======
 
