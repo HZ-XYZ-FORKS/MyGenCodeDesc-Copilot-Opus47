@@ -8,7 +8,7 @@ CaTDD tests covering:
   AC-AlgB-5  commits after endTime are ignored
   AC-006-1   missing genCodeDesc entry → ZERO (default) attributes genRatio 0,
              ABORT raises, SKIP drops the line from the surviving set
-  AC-AlgB-6  patch parser rejects rename / binary
+    AC-AlgB-6  patch parser supports rename and rejects binary
 """
 
 from __future__ import annotations
@@ -311,16 +311,69 @@ def test_build_commit_requires_revisionTimestamp() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Patch parser: rename and binary rejected
+# Patch parser / replay: rename supported, binary still rejected
 # ---------------------------------------------------------------------------
-def test_patch_rejects_rename() -> None:
+def test_patch_parses_pure_rename_without_hunks() -> None:
     text = (
         "diff --git a/old.py b/new.py\n"
+        "similarity index 100%\n"
         "rename from old.py\n"
         "rename to new.py\n"
     )
-    with pytest.raises(ValidationError, match="rename"):
-        parse_unified_diff(text)
+    files = parse_unified_diff(text)
+    assert len(files) == 1
+    assert files[0].old_path == "old.py"
+    assert files[0].new_path == "new.py"
+    assert files[0].hunks == ()
+
+
+def test_ac_algb_rename_chain_replay_keeps_line_and_updates_path() -> None:
+    # c1: add a.py line 1 (AI)
+    r1 = _record(
+        "c1", "2026-02-10T10:00:00Z", "a.py",
+        [{"lineLocation": 1, "genRatio": 100, "genMethod": "vibeCoding"}],
+    )
+    p1 = (
+        "diff --git a/a.py b/a.py\n"
+        "--- /dev/null\n"
+        "+++ b/a.py\n"
+        "@@ -0,0 +1,1 @@\n"
+        "+line\n"
+    )
+    # c2: pure rename a.py -> b.py
+    r2 = _record("c2", "2026-02-11T10:00:00Z", "b.py", [])
+    p2 = (
+        "diff --git a/a.py b/b.py\n"
+        "similarity index 100%\n"
+        "rename from a.py\n"
+        "rename to b.py\n"
+    )
+    # c3: pure rename b.py -> c.py
+    r3 = _record("c3", "2026-02-12T10:00:00Z", "c.py", [])
+    p3 = (
+        "diff --git a/b.py b/c.py\n"
+        "similarity index 100%\n"
+        "rename from b.py\n"
+        "rename to c.py\n"
+    )
+
+    result = run_algorithm_b(
+        [
+            build_commit(r1, p1),
+            build_commit(r2, p2),
+            build_commit(r3, p3),
+        ],
+        start_time=_utc("2026-01-01T00:00:00Z"),
+        end_time=_utc("2026-12-31T00:00:00Z"),
+        threshold=60,
+    )
+
+    assert result.metrics.total_lines == 1
+    assert result.metrics.fully_ai_value == 1.0
+    assert len(result.surviving) == 1
+    assert result.surviving[0].file_name == "c.py"
+    # Pure renames do not change ownership.
+    assert result.surviving[0].revision_id == "c1"
 
 
 def test_patch_rejects_binary() -> None:
@@ -348,3 +401,56 @@ def test_patch_parses_multiple_files() -> None:
     files = parse_unified_diff(text)
     assert [f.new_path for f in files] == ["a.py", "b.py"]
     assert all(f.is_new_file for f in files)
+
+
+def test_patch_parses_quoted_paths() -> None:
+    text = (
+        'diff --git "a/my file.py" "b/my file.py"\n'
+        '--- "a/my file.py"\n'
+        '+++ "b/my file.py"\n'
+        "@@ -0,0 +1,1 @@\n"
+        "+x\n"
+    )
+    files = parse_unified_diff(text)
+    assert len(files) == 1
+    assert files[0].old_path == "my file.py"
+    assert files[0].new_path == "my file.py"
+
+
+def test_patch_rejects_inconsistent_rename_metadata_and_hunk_paths() -> None:
+    text = (
+        "diff --git a/a.py b/b.py\n"
+        "rename from a.py\n"
+        "rename to b.py\n"
+        "--- a/x.py\n"
+        "+++ b/y.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    with pytest.raises(ValidationError, match="inconsistent rename paths"):
+        parse_unified_diff(text)
+
+
+def test_ac_algb_quoted_path_matches_record_file_name() -> None:
+    rec = _record(
+        "c1", "2026-02-10T10:00:00Z", "my file.py",
+        [{"lineLocation": 1, "genRatio": 100, "genMethod": "vibeCoding"}],
+    )
+    patch = (
+        'diff --git "a/my file.py" "b/my file.py"\n'
+        "--- /dev/null\n"
+        '+++ "b/my file.py"\n'
+        "@@ -0,0 +1,1 @@\n"
+        "+x\n"
+    )
+
+    result = run_algorithm_b(
+        [build_commit(rec, patch)],
+        start_time=_utc("2026-01-01T00:00:00Z"),
+        end_time=_utc("2026-12-31T00:00:00Z"),
+        threshold=60,
+    )
+    assert result.metrics.total_lines == 1
+    assert result.metrics.fully_ai_value == 1.0
+    assert result.warnings == ()

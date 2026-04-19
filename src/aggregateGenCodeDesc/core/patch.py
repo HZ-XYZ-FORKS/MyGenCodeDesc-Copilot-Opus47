@@ -8,7 +8,7 @@ Supports:
   context / '+' / '-' body lines
 
 Not supported (kept simple by design):
-  - rename / copy / binary / mode-only changes: raised as ValidationError so
+    - copy / binary / mode-only changes: raised as ValidationError so
     the operator can detect and handle them explicitly.
   - combined diffs (3-way merges).
 
@@ -69,7 +69,7 @@ _HUNK_RE = re.compile(
 def parse_unified_diff(text: str) -> list[FilePatch]:
     """Parse a unified diff (possibly concatenating multiple files) into FilePatch objects.
 
-    Raises ValidationError on unsupported constructs (rename, binary, mode-only).
+    Raises ValidationError on unsupported constructs (copy, binary, mode-only).
     """
     lines = text.splitlines()
     files: list[FilePatch] = []
@@ -108,17 +108,36 @@ def _parse_file_block(lines: list[str], i: int) -> tuple[int, FilePatch | None]:
     n = len(lines)
     old_path: str | None = None
     new_path: str | None = None
+    rename_from: str | None = None
+    rename_to: str | None = None
 
-    # Skip the diff --git / index / mode lines up to --- / +++
-    # Raise on renames and binaries.
+    # Parse optional `diff --git a/... b/...` header first so pure-rename
+    # patches (with no ---/+++ or hunks) can still be represented.
+    if i < n and lines[i].startswith("diff --git "):
+        parts = lines[i].split()
+        if len(parts) >= 4:
+            old_path = _extract_path(parts[2])
+            new_path = _extract_path(parts[3])
+        i += 1
+
+    # Scan metadata and, when present, parse ---/+++ block and hunks.
     while i < n:
         line = lines[i]
-        if line.startswith("rename from ") or line.startswith("rename to "):
-            raise ValidationError("patch: rename detection not supported by AlgB parser")
+        if line.startswith("rename from "):
+            rename_from = _extract_path(line[len("rename from "):])
+            i += 1
+            continue
+        if line.startswith("rename to "):
+            rename_to = _extract_path(line[len("rename to "):])
+            i += 1
+            continue
         if line.startswith("copy from ") or line.startswith("copy to "):
             raise ValidationError("patch: copy detection not supported by AlgB parser")
         if line.startswith("Binary files ") or line.startswith("GIT binary patch"):
             raise ValidationError("patch: binary diff not supported by AlgB parser")
+        if line.startswith("diff --git "):
+            # Next file block begins. Current block had no ---/+++ section.
+            break
         if line.startswith("--- "):
             old_path = _extract_path(line[4:])
             i += 1
@@ -129,7 +148,22 @@ def _parse_file_block(lines: list[str], i: int) -> tuple[int, FilePatch | None]:
                 raise ValidationError(f"patch: missing +++ line after {line!r}")
             break
         i += 1
-    else:
+
+    if rename_from is not None:
+        if old_path is not None and old_path != rename_from:
+            raise ValidationError(
+                f"patch: inconsistent rename paths (header old={old_path!r}, rename from={rename_from!r})"
+            )
+        old_path = rename_from
+    if rename_to is not None:
+        if new_path is not None and new_path != rename_to:
+            raise ValidationError(
+                f"patch: inconsistent rename paths (header new={new_path!r}, rename to={rename_to!r})"
+            )
+        new_path = rename_to
+
+    # No usable path information in this block.
+    if old_path is None and new_path is None:
         return i, None
 
     hunks: list[Hunk] = []
@@ -154,6 +188,8 @@ def _parse_file_block(lines: list[str], i: int) -> tuple[int, FilePatch | None]:
 def _extract_path(raw: str) -> str:
     """`a/path/to/file` → `path/to/file`; leaves `/dev/null` untouched."""
     raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+        raw = raw[1:-1]
     # Strip trailing tab-metadata (timestamp) that git/patch may append.
     raw = raw.split("\t", 1)[0].strip()
     if raw == "/dev/null":

@@ -14,7 +14,7 @@ For each commit in ascending revisionTimestamp order:
 After replay, filter surviving lines by introduction timestamp in
 [startTime, endTime] and pass the genRatio list to core.metric.compute_metrics.
 
-Not supported by design: rename, copy, binary diffs. They raise ValidationError.
+Not supported by design: copy and binary diffs. They raise ValidationError.
 """
 
 from __future__ import annotations
@@ -188,6 +188,21 @@ def _renumber_file(surviving: list[_SurvivingLine]) -> None:
             )
 
 
+def _retarget_file_name(surviving: list[_SurvivingLine], new_file_name: str) -> None:
+    """When a file is renamed, update the current file_name for all surviving
+    lines while preserving ownership (revision/timestamp/genRatio)."""
+    for i, entry in enumerate(surviving):
+        if entry.file_name != new_file_name:
+            surviving[i] = _SurvivingLine(
+                revision_id=entry.revision_id,
+                timestamp=entry.timestamp,
+                gen_ratio=entry.gen_ratio,
+                gen_method=entry.gen_method,
+                file_name=new_file_name,
+                line_location=entry.line_location,
+            )
+
+
 def run_algorithm_b(
     commits: Iterable[AlgBCommit],
     *,
@@ -217,12 +232,17 @@ def run_algorithm_b(
             if fp.is_new_file:
                 state[new_path] = []
             else:
-                # Without rename support, old_path must equal new_path.
                 if fp.old_path is not None and fp.old_path != new_path:
-                    raise ValidationError(
-                        f"patch: rename {fp.old_path!r} → {new_path!r} not supported by AlgB"
-                    )
-                state.setdefault(new_path, [])
+                    # Rename/move: carry the surviving-line list to the new path.
+                    moved = state.pop(fp.old_path, [])
+                    _retarget_file_name(moved, new_path)
+                    if new_path in state and state[new_path]:
+                        raise ValidationError(
+                            f"patch: rename target already exists in replay state: {new_path!r}"
+                        )
+                    state[new_path] = moved
+                else:
+                    state.setdefault(new_path, [])
 
             file_list = state[new_path]
             for hunk in fp.hunks:

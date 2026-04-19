@@ -3,8 +3,8 @@
 Covers acceptance criteria not already exercised by per-algorithm suites:
 
   AC-009-3  [Fault]   AlgA reports clear error when VCS is unreachable.
-  AC-009-5  [Edge]    AlgB chained renames → current policy is "unsupported",
-                      documented by ValidationError.
+    AC-009-5  [Edge]    AlgB chained renames preserve line ownership while
+                                            updating current path.
   AC-009-6  [Fault]   AlgB diff missing for one commit in the chain →
                       CLI aborts with the offending revisionId in the error.
   AC-009-8  [Edge]    AlgC duplicate add for same (rev, origFile, origLine) →
@@ -79,18 +79,17 @@ def test_ac_009_3_alga_reports_unreachable_vcs(
 
 
 # =============================================================================
-# AC-009-5 [Edge] AlgB does not support renames; chained renames are rejected
-# with a clear "rename not supported" ValidationError.
+# AC-009-5 [Edge] AlgB supports chained renames; line ownership persists while
+# current path moves to the final file name.
 # =============================================================================
-def test_ac_009_5_algb_rename_chain_is_rejected() -> None:
-    # v1.py → v2.py rename in a patch. AlgB's current policy rejects renames.
-    rec = {
+def test_ac_009_5_algb_rename_chain_preserves_ownership() -> None:
+    r1 = {
         "protocolName": "generatedTextDesc",
         "protocolVersion": "26.03",
         "SUMMARY": {},
         "DETAIL": [
             {
-                "fileName": "v2.py",
+                "fileName": "v1.py",
                 "codeLines": [
                     {
                         "lineLocation": 1,
@@ -104,37 +103,76 @@ def test_ac_009_5_algb_rename_chain_is_rejected() -> None:
             "vcsType": "git",
             "repoURL": "https://x/r",
             "repoBranch": "main",
-            "revisionId": "c2",
+            "revisionId": "c1",
             "revisionTimestamp": "2026-03-01T10:00:00Z",
         },
     }
-    # Unified-diff that renames v1.py to v2.py.
-    patch = (
+
+    p1 = (
+        "diff --git a/v1.py b/v1.py\n"
+        "--- /dev/null\n"
+        "+++ b/v1.py\n"
+        "@@ -0,0 +1,1 @@\n"
+        "+line\n"
+    )
+
+    r2 = {
+        "protocolName": "generatedTextDesc",
+        "protocolVersion": "26.03",
+        "SUMMARY": {},
+        "DETAIL": [],
+        "REPOSITORY": {
+            "vcsType": "git",
+            "repoURL": "https://x/r",
+            "repoBranch": "main",
+            "revisionId": "c2",
+            "revisionTimestamp": "2026-03-02T10:00:00Z",
+        },
+    }
+    p2 = (
         "diff --git a/v1.py b/v2.py\n"
         "similarity index 100%\n"
         "rename from v1.py\n"
         "rename to v2.py\n"
-        "--- a/v1.py\n"
-        "+++ b/v2.py\n"
-        "@@ -1,1 +1,1 @@\n"
-        "-old\n"
-        "+new\n"
     )
-    commit = None
-    with pytest.raises(ValidationError) as excinfo:
-        commit = build_commit(rec, patch)
-        # Defensive: if parser ever tolerates rename, replay must still reject.
-        run_algorithm_b(
-            [commit],
-            start_time=_utc("2026-01-01T00:00:00Z"),
-            end_time=_utc("2026-12-31T00:00:00Z"),
-            threshold=60,
-            on_missing=OnMissing.ZERO,
-        )
-    # Must name the unsupported op so the fork's doc covers rename chains.
-    msg = str(excinfo.value).lower()
-    assert "rename" in msg
-    assert "not supported" in msg
+
+    r3 = {
+        "protocolName": "generatedTextDesc",
+        "protocolVersion": "26.03",
+        "SUMMARY": {},
+        "DETAIL": [],
+        "REPOSITORY": {
+            "vcsType": "git",
+            "repoURL": "https://x/r",
+            "repoBranch": "main",
+            "revisionId": "c3",
+            "revisionTimestamp": "2026-03-03T10:00:00Z",
+        },
+    }
+    p3 = (
+        "diff --git a/v2.py b/v3.py\n"
+        "similarity index 100%\n"
+        "rename from v2.py\n"
+        "rename to v3.py\n"
+    )
+
+    result = run_algorithm_b(
+        [
+            build_commit(r1, p1),
+            build_commit(r2, p2),
+            build_commit(r3, p3),
+        ],
+        start_time=_utc("2026-01-01T00:00:00Z"),
+        end_time=_utc("2026-12-31T00:00:00Z"),
+        threshold=60,
+        on_missing=OnMissing.ZERO,
+    )
+
+    assert result.metrics.total_lines == 1
+    assert result.metrics.fully_ai_value == 1.0
+    assert len(result.surviving) == 1
+    assert result.surviving[0].file_name == "v3.py"
+    assert result.surviving[0].revision_id == "c1"
 
 
 # =============================================================================
