@@ -54,8 +54,14 @@ cd "$ROOT" || exit 1
 run_step "System E2E robust tests" python3 -m pytest tests/test_system_e2e_robust.py -q
 run_step "Scale matrix git-local (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_git_local.py -q --durations=5
 run_step "Scale matrix git-remote (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_git_remote.py -q --durations=5
-run_step "Scale matrix svn-local (AlgB/C + AlgA-rejected)" python3 -m pytest tests/test_scale_matrix_svn_local.py -q --durations=5
-run_step "Scale matrix svn-remote (AlgB/C)" python3 -m pytest tests/test_scale_matrix_svn_remote.py -q --durations=5
+run_step "Scale matrix svn-local (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_svn_local.py -q --durations=5
+run_step "Scale matrix svn-remote (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_svn_remote.py -q --durations=5
+if [[ "${SKIP_SCALE_MAGNITUDE:-0}" != "1" ]]; then
+  run_step "Scale magnitude git-local (AlgA/B/C, 500x50x5 + determinism + RSS)" \
+    env RUN_SCALE_MAGNITUDE=1 python3 -m pytest tests/test_scale_magnitude.py -q --durations=5
+else
+  log "SKIP  Scale magnitude (SKIP_SCALE_MAGNITUDE=1)"
+fi
 run_step "Full regression tests" python3 -m pytest tests/ -q
 run_step "Rich system demo" "$ROOT/scripts/run_system_demo.sh"
 
