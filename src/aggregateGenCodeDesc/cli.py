@@ -455,18 +455,34 @@ def _run_alg_a(args: argparse.Namespace) -> int:
         raise ValidationError(
             f"Algorithm A requires a homogeneous v26.03 --gen-code-desc-dir; found {sorted(versions)}"
         )
-    if vcs_types != {"git"}:
-        raise ValidationError(f"Algorithm A requires vcsType=git; found {sorted(vcs_types)}")
-    log.info("LOAD phase: %d v26.03 records for Algorithm A from %s", len(records), gcd_dir)
-    result = run_algorithm_a(
-        args.repo_path,
-        records,
-        start_time=args.start_time,
-        end_time=args.end_time,
-        end_rev=args.end_rev,
-        threshold=args.threshold,
-        on_missing=OnMissing(args.on_missing),
-    )
+    if vcs_types not in ({"git"}, {"svn"}):
+        raise ValidationError(
+            f"Algorithm A requires vcsType=git or vcsType=svn (homogeneous); found {sorted(vcs_types)}"
+        )
+    vcs_type = next(iter(vcs_types))
+    log.info("LOAD phase: %d v26.03 records for Algorithm A (vcsType=%s) from %s",
+             len(records), vcs_type, gcd_dir)
+    if vcs_type == "git":
+        result = run_algorithm_a(
+            args.repo_path,
+            records,
+            start_time=args.start_time,
+            end_time=args.end_time,
+            end_rev=args.end_rev,
+            threshold=args.threshold,
+            on_missing=OnMissing(args.on_missing),
+        )
+    else:
+        from aggregateGenCodeDesc.algorithms.alg_a_svn import run_algorithm_a_svn
+        result = run_algorithm_a_svn(
+            args.repo_path,
+            records,
+            start_time=args.start_time,
+            end_time=args.end_time,
+            end_rev=args.end_rev,
+            threshold=args.threshold,
+            on_missing=OnMissing(args.on_missing),
+        )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     surviving_view = [
@@ -483,7 +499,7 @@ def _run_alg_a(args: argparse.Namespace) -> int:
         surviving=surviving_view,
         repo_url=args.repo_url,
         repo_branch=args.repo_branch,
-        vcs_type="git",
+        vcs_type=vcs_type,
         start_time=args.start_time,
         end_time=args.end_time,
         algorithm=args.algorithm,
