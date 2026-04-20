@@ -19,6 +19,7 @@ Not supported by design: copy and binary diffs. They raise ValidationError.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,6 +37,9 @@ from aggregateGenCodeDesc.core.protocol import (
     load_record_from_dict,
 )
 from aggregateGenCodeDesc.core.validation import ValidationError
+
+
+_log = logging.getLogger("aggregateGenCodeDesc")
 
 
 @dataclass(frozen=True)
@@ -221,6 +225,22 @@ def run_algorithm_b(
     warnings: list[str] = []
 
     for commit in ordered:
+        # AC-010-2: DEBUG per-commit replay decision — count add/delete events
+        # across all hunks of all files in this commit's patch.
+        if _log.isEnabledFor(logging.DEBUG):
+            adds = 0
+            deletes = 0
+            for fp in commit.patch_files:
+                for hunk in fp.hunks:
+                    for ev in hunk.events:
+                        if ev.kind is HunkEventKind.ADD:
+                            adds += 1
+                        elif ev.kind is HunkEventKind.DELETE:
+                            deletes += 1
+            _log.debug(
+                "REPLAY revisionId=%s files=%d adds=%d deletes=%d",
+                commit.revision_id, len(commit.patch_files), adds, deletes,
+            )
         for fp in commit.patch_files:
             if fp.is_deleted_file:
                 # File removed wholesale: drop all surviving lines for old_path.

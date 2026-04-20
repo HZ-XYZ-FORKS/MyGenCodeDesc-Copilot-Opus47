@@ -13,6 +13,7 @@ Rename/move support comes for free from `git blame -M -C`
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,9 @@ from aggregateGenCodeDesc.core.protocol import (
     load_record_from_dict,
 )
 from aggregateGenCodeDesc.core.validation import ValidationError
+
+
+_log = logging.getLogger("aggregateGenCodeDesc")
 
 
 @dataclass(frozen=True)
@@ -158,7 +162,7 @@ def _resolve_line(
     else:
         gr, gm = entry
 
-    return _SurvivingLine(
+    result = _SurvivingLine(
         origin_revision=b.origin_revision,
         origin_timestamp=b.origin_timestamp,
         origin_file=b.origin_file,
@@ -168,3 +172,12 @@ def _resolve_line(
         gen_ratio=gr,
         gen_method=gm,
     )
+    # AC-010-2: per-line BLAME decision at DEBUG, identifying origin revision,
+    # origin file/line, and the resolved genRatio (or 0 on missing attribution).
+    if _log.isEnabledFor(logging.DEBUG):
+        _log.debug(
+            "BLAME file=%s line=%d origin=%s origin_file=%s origin_line=%d genRatio=%d",
+            b.file_path, b.line_number, b.origin_revision[:7],
+            b.origin_file, b.origin_line, gr,
+        )
+    return result
