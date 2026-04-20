@@ -57,6 +57,7 @@ run_step "Scale matrix git-remote (AlgA/B/C)" python3 -m pytest tests/test_scale
 run_step "Scale matrix svn-local (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_svn_local.py -q --durations=5
 run_step "Scale matrix svn-remote (AlgA/B/C)" python3 -m pytest tests/test_scale_matrix_svn_remote.py -q --durations=5
 run_step "Transport git:// (AlgA via git daemon)" python3 -m pytest tests/test_transport_git_daemon.py -q --durations=5
+run_step "Transport svn http DAV (AlgA-SVN via httpd+mod_dav_svn)" python3 -m pytest tests/test_transport_svn_dav.py -q --durations=5
 run_step "Non-linear history (merge + cherry-pick + revert, AlgA/B)" python3 -m pytest tests/test_scale_nonlinear_history.py -q --durations=5
 if [[ "${SKIP_SCALE_MAGNITUDE:-0}" != "1" ]]; then
   run_step "Scale magnitude git-local (AlgA/B/C, 500x50x5 + determinism + RSS)" \
