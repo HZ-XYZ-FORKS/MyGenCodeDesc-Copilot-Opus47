@@ -63,6 +63,12 @@ if [[ "${SKIP_SCALE_MAGNITUDE:-0}" != "1" ]]; then
 else
   log "SKIP  Scale magnitude (SKIP_SCALE_MAGNITUDE=1)"
 fi
+if [[ "${SKIP_AC_008_1:-0}" != "1" ]]; then
+  run_step "AC-008-1 reference scale (AlgA, 1000x100x10, RSS<1GiB)" \
+    env RUN_AC_008_1=1 python3 -m pytest tests/test_ac_008_1_reference_scale.py -q -s --durations=5
+else
+  log "SKIP  AC-008-1 reference scale (SKIP_AC_008_1=1)"
+fi
 run_step "Full regression tests" python3 -m pytest tests/ -q
 run_step "Rich system demo" "$ROOT/scripts/run_system_demo.sh"
 
