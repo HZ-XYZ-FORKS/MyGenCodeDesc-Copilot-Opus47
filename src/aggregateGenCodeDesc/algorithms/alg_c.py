@@ -355,9 +355,12 @@ def run_algorithm_c_full(
 # ---------------------------------------------------------------------------
 
 
-def _peek_revision_timestamp(path: Path) -> datetime:
-    """Pass-1 helper: load a v26.04 file and return only its REPOSITORY
-    revisionTimestamp. The full dict is discarded on return."""
+def _peek_revision_timestamp(path: Path) -> tuple[datetime, str]:
+    """Pass-1 helper: load a v26.04 file and return
+    (revisionTimestamp, revisionId). The full dict is discarded on return.
+    Capturing revisionId here lets Pass-2 errors identify the record by
+    both file path and revisionId per AC-008-4.
+    """
     try:
         with path.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -377,20 +380,39 @@ def _peek_revision_timestamp(path: Path) -> datetime:
         raise ValidationError(
             f"{path}: REPOSITORY.revisionTimestamp is required in v26.04"
         )
-    return _parse_ts(ts_raw, f"{path}:REPOSITORY.revisionTimestamp")
+    rev_id = repo.get("revisionId")
+    if not rev_id:
+        raise ValidationError(
+            f"{path}: REPOSITORY.revisionId is required in v26.04"
+        )
+    ts = _parse_ts(ts_raw, f"{path}:REPOSITORY.revisionTimestamp")
+    return ts, str(rev_id)
 
 
-def _load_single_record(path: Path) -> V2604Record:
+def _load_single_record(path: Path, revision_id: str | None = None) -> V2604Record:
     """Pass-2 helper: load one v26.04 file and parse it into a V2604Record.
-    Caller should let the record go out of scope immediately after replay."""
+    Caller should let the record go out of scope immediately after replay.
+
+    AC-008-4: any failure (I/O, JSON, schema) is reported with the file
+    path. When revision_id is supplied (Pass-1 already indexed it) it is
+    included in the error message too.
+    """
+    ctx = f"{path}"
+    if revision_id is not None:
+        ctx = f"{path} (revisionId={revision_id})"
     try:
         with path.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
     except OSError as exc:
-        raise ValidationError(f"{path}: cannot read file: {exc}") from exc
+        raise ValidationError(f"{ctx}: cannot read file: {exc}") from exc
     except json.JSONDecodeError as exc:
-        raise ValidationError(f"{path}: invalid JSON: {exc}") from exc
-    return load_v2604_record(data)
+        raise ValidationError(f"{ctx}: invalid JSON: {exc}") from exc
+    try:
+        return load_v2604_record(data)
+    except ValidationError as exc:
+        # Re-raise with the file path + revisionId context prepended so
+        # callers can identify which input record failed.
+        raise ValidationError(f"{ctx}: {exc}") from exc
 
 
 def run_algorithm_c_streaming(
@@ -419,14 +441,16 @@ def run_algorithm_c_streaming(
 
     paths = [Path(p) for p in record_paths]
 
-    # Pass 1: index timestamps only.
-    indexed: list[tuple[datetime, Path]] = []
+    # Pass 1: index (timestamp, revisionId) per file. revisionId is
+    # captured so Pass-2 failures can be reported with revisionId per
+    # AC-008-4 without re-reading the file.
+    indexed: list[tuple[datetime, Path, str]] = []
     for p in paths:
-        ts = _peek_revision_timestamp(p)
-        indexed.append((ts, p))
+        ts, rev = _peek_revision_timestamp(p)
+        indexed.append((ts, p, rev))
 
     # AC-006-4: detect clock skew in the original iteration order.
-    for (ts_a, _), (ts_b, _) in zip(indexed, indexed[1:]):
+    for (ts_a, _, _), (ts_b, _, _) in zip(indexed, indexed[1:]):
         if ts_b < ts_a:
             if on_clock_skew is OnClockSkew.ABORT:
                 raise ValidationError(
@@ -436,13 +460,13 @@ def run_algorithm_c_streaming(
 
     # Keep only paths whose revisionTimestamp falls at or before end_time,
     # then sort ascending by timestamp.
-    indexed = [(ts, p) for ts, p in indexed if ts <= end_time]
+    indexed = [(ts, p, rev) for ts, p, rev in indexed if ts <= end_time]
     indexed.sort(key=lambda t: t[0])
 
     # Pass 2: streaming replay. `rec` goes out of scope each iteration.
     surviving: dict[tuple[str, str, int], _SurvivingLine] = {}
-    for _ts, p in indexed:
-        rec = _load_single_record(p)
+    for _ts, p, rev in indexed:
+        rec = _load_single_record(p, revision_id=rev)
         for d in rec.deletes:
             surviving.pop((d.revision_id, d.original_file, d.original_line), None)
         for a in rec.adds:

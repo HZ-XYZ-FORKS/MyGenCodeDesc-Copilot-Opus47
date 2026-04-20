@@ -158,12 +158,12 @@ def test_streaming_never_holds_more_than_one_record(
 
     original = alg_c_module._load_single_record
 
-    def traced(path: Path):
+    def traced(path: Path, revision_id: str | None = None):
         # Force collection of any dead record before measuring.
         gc.collect()
         alive = sum(1 for r in live_refs if r() is not None)
         concurrency.append(alive)
-        rec = original(path)
+        rec = original(path, revision_id=revision_id)
         live_refs.append(weakref.ref(rec))
         return rec
 
@@ -230,9 +230,9 @@ def test_streaming_skips_post_endtime_records(
     loaded: list[Path] = []
     original = alg_c_module._load_single_record
 
-    def traced(path: Path):
+    def traced(path: Path, revision_id: str | None = None):
         loaded.append(path)
-        return original(path)
+        return original(path, revision_id=revision_id)
 
     monkeypatch.setattr(alg_c_module, "_load_single_record", traced)
 
