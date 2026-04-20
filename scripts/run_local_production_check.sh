@@ -77,6 +77,12 @@ if [[ "${SKIP_AC_008_2:-0}" != "1" ]]; then
 else
   log "SKIP  AC-008-2 streaming scale (SKIP_AC_008_2=1)"
 fi
+if [[ "${SKIP_PACKAGING:-0}" != "1" ]]; then
+  run_step "Packaging (wheel + sdist + installed CLI)" \
+    env RUN_PACKAGING=1 python3 -m pytest tests/test_packaging.py -q --durations=5
+else
+  log "SKIP  Packaging (SKIP_PACKAGING=1)"
+fi
 run_step "Full regression tests" python3 -m pytest tests/ -q
 run_step "Rich system demo" "$ROOT/scripts/run_system_demo.sh"
 

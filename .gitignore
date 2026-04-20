@@ -210,3 +210,4 @@ __marimo__/
 .demo_matrix/
 .demo_rich/
 
+dist/
