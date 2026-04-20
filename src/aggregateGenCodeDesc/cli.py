@@ -560,3 +560,9 @@ def main(argv: list[str] | None = None) -> int:
     except NotImplementedError as exc:
         log.error("%s", exc)
         return 1
+    except Exception as exc:  # noqa: BLE001 — intentional CLI boundary guard.
+        # README_UserGuide.md §7: uncaught runtime errors (I/O failures,
+        # VCS CLI failures, stdlib surprises) must return exit code 1 with
+        # a diagnosable log record, not propagate as a traceback.
+        log.exception("unexpected runtime error: %s", exc)
+        return 1
